@@ -1,0 +1,79 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+runcmd:
+  # --- 1) Install prerequisites ---
+  - yum install -y yum-utils git dnf-plugins-core
+
+  # --- 2) Add Docker’s official repository ---
+  - yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+  # --- 3) Install Docker CE, CLI, and containerd ---
+  - yum install -y docker-ce docker-ce-cli containerd.io
+
+  # --- 4) Enable and start Docker service ---
+  - systemctl enable docker
+  - systemctl start docker
+
+  # --- 5) Add default user to docker group (optional) ---
+  - usermod -aG docker opc
+
+  # --- 6) Install Docker Compose plugin ---
+  - mkdir -p /usr/local/lib/docker/cli-plugins
+  - curl -SL https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-linux-aarch64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  - chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+  # --- 7) Create project directory ---
+  - mkdir -p /opt/n8n
+  - cd /opt/n8n
+
+  # --- 8) Clone GitHub repo with workflows ---
+  - git clone https://github.com/cdebadri/split.git /opt/n8n
+
+  # --- 9) Build .env for n8n config: ---
+  - |
+    cat <<EOF > /opt/n8n/.env
+    GENERIC_TIMEZONE="Asia/Kolkata"
+    N8N_HOST="0.0.0.0"
+    WEBHOOK_URL=ENV_WEBHOOK_URL
+    N8N_PROTOCOL="http"
+    N8N_BASIC_AUTH_ACTIVE=true
+    N8N_BASIC_AUTH_USER=ENV_ADMIN
+    N8N_BASIC_AUTH_PASSWORD=ENV_PASSWORD
+    EOF
+
+  # --- 10) Write Docker Compose for n8n ---
+  - |
+    cat <<EOF > /opt/n8n/docker-compose.yml
+    version: "3.8"
+    services:
+      n8n:
+        image: n8nio/n8n:latest
+        restart: unless-stopped
+        ports:
+          - "5678:5678"
+        environment:
+          - GENERIC_TIMEZONE=\${GENERIC_TIMEZONE}
+          - N8N_HOST=\${N8N_HOST}
+          - WEBHOOK_URL=\${WEBHOOK_URL}
+          - N8N_PROTOCOL=\${N8N_PROTOCOL}
+          - N8N_BASIC_AUTH_ACTIVE=\${N8N_BASIC_AUTH_ACTIVE}
+          - N8N_BASIC_AUTH_USER=\${N8N_BASIC_AUTH_USER}
+          - N8N_BASIC_AUTH_PASSWORD=\${N8N_BASIC_AUTH_PASSWORD}
+        volumes:
+          - n8n_data:/home/node/.n8n
+          - ./workflows:/home/node/.n8n/workflows
+    volumes:
+      n8n_data:
+    EOF
+
+  # --- 11) Launch the stack ---
+  - cd /opt/n8n
+  - docker compose up -d
+
+  # --- 12) Delay & import workflows automatically ---
+  - sleep 20
+  - docker exec $(docker ps -q -f "ancestor=n8nio/n8n:latest") n8n import:workflow --input=/home/node/.n8n/workflows
+
+final_message: "n8n ARM Always Free setup complete!"
