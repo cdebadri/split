@@ -1,0 +1,752 @@
+{
+  "name": "Split",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Add Invoice Data",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Invoice Upload",
+              "fieldType": "file",
+              "fieldName": "file_upload",
+              "acceptFileTypes": ".jpg,.png"
+            },
+            {
+              "fieldLabel": "Split Details",
+              "fieldType": "textarea",
+              "fieldName": "split_details"
+            },
+            {
+              "fieldType": "html",
+              "html": "<!-- Your custom HTML here --->\n<h3>OR</h3>"
+            },
+            {
+              "fieldLabel": "Non Billed Expenses",
+              "fieldType": "textarea",
+              "fieldName": "text_expenses"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -464,
+        464
+      ],
+      "id": "2900a909-188d-41bd-ae43-d74fb1977849",
+      "name": "invoice submission",
+      "webhookId": "86209bf6-adc4-4b64-92d9-02e0d75768bc",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a1bc6180-adfb-4b69-9883-b02ad28d4367",
+              "leftValue": "={{$binary.file_upload}}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        464
+      ],
+      "id": "1326eca0-4b33-4153-9154-75d5c2357020",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "binaryPropertyName": "={{$('invoice submission').item.binary.file_upload}}",
+        "options": {
+          "channelId": "C0ACJ6KPNEM",
+          "initialComment": "={{$json.split_details}}",
+          "title": "=Invoice_{{$json.submittedAt}}"
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -16,
+        368
+      ],
+      "id": "c68fa219-1077-49b9-8b97-f44752cb0507",
+      "name": "bill upload",
+      "webhookId": "3a72ce2c-c719-4890-8e1f-e7639016ea1e",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackApi": {
+          "id": "IiBAuK1qkCFH6YkN",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#finance",
+          "mode": "name"
+        },
+        "messageType": "block",
+        "blocksUi": "={\n\t\"blocks\": [\n\t\t{\n\t\t\t\"type\": \"divider\"\n\t\t},\n\t\t{\n\t\t\t\"type\": \"header\",\n\t\t\t\"text\": {\n\t\t\t\t\"type\": \"plain_text\",\n\t\t\t\t\"text\": \"Non billed expenses - {{ $json.submittedAt }}\",\n\t\t\t\t\"emoji\": true\n\t\t\t}\n\t\t},\n\t\t{\n\t\t\t\"type\": \"section\",\n\t\t\t\"text\": {\n\t\t\t\t\"type\": \"mrkdwn\",\n\t\t\t\t\"text\": {{ $json.text_expenses.toJsonString() }}\n\t\t\t}\n\t\t}\n\t]\n}",
+        "text": "=New non-billed Expense - {{ $json.submittedAt }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        -16,
+        560
+      ],
+      "id": "c261f3ff-8494-4a26-895e-1f594eacb1b0",
+      "name": "non billed expense",
+      "webhookId": "657888df-2131-4f30-b13b-32f8cdce414a",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackApi": {
+          "id": "IiBAuK1qkCFH6YkN",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Share Information:\n{{ $json.body.event.text }}",
+        "options": {
+          "systemMessage": "\n## CONTEXT\nYou are an expert in calculating individual shares from a total amount based on individual expenditure. You would be given a total amount of the bill and the prices of individual items and also the quantity. You are also given what portion each person shared. You are required to calculate the total individual share of each person out of the total.\n\n## TOOLS\nYou are given tools to calculate shares\nSum Tool - To find the sum of amounts\nVerify Tool - To check whether the sum of all individual shares equals the total amount.\n\n## INSTRUCTIONS\n- Call the `Sum Tool` to calculate individual shares.\n- Use the `Verify Tool` to verify if all shares are adding upto the total.\n\n## IMPORTANT \n- Always use the tools for calculations\n- If the `Verify Tool` returns non zero value redo the calculation\n- If the 'Verify Tool' returns zero value then return the individual shares of people.\n- Pass only the required values to tools as mentioned by input schemas.",
+          "returnIntermediateSteps": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1456,
+        1024
+      ],
+      "id": "4cb23dad-6bd4-4559-a18c-b636db6fc647",
+      "name": "AI Agent",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxOutputTokens": 2048,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        1248
+      ],
+      "id": "963cd497-e130-44a0-9b6f-1569787f3795",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "zfJJ6kGG14dQRhCZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Call this tool to verify if the total amount of the bill and the sum of share amounts are zero. If not zero then there's a problem and redo the calculation ",
+        "jsCode": "\nlet sum = 0;\nquery.shares.forEach(x => {\n  sum += x;\n})\nreturn sum - query.total;",
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\n\t\"total\": 100,\n    \"shares\": [20, 30, 50]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        1584,
+        1248
+      ],
+      "id": "642b8f7f-ab63-47cb-a2a5-00e386653442",
+      "name": "Verify Tool"
+    },
+    {
+      "parameters": {
+        "description": "Call this tool with an array of amounts to find the total amount .\nArgs:\namounts: the array of objects that is to be added to find the sum.\nReturns: str",
+        "jsCode": "// Example: convert the incoming query to uppercase and return it\nlet sum = 0;\nquery.amounts.forEach(obj => {\n  sum += obj.price * obj.quantity\n})\n\nreturn sum;",
+        "specifyInputSchema": true,
+        "jsonSchemaExample": "{\n    \"amounts\": [\n      {\n        \"price\": 10,\n        \"quantity\": 1\n      },\n      {\n        \"price\": 2,\n        \"quantity\": 10\n      }\n    ] \n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        1712,
+        1248
+      ],
+      "id": "8058c4a2-a6e1-467f-9a75-58bb9ede8535",
+      "name": "Sum Tool"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=Invoice-{{ $json.submittedAt }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1456,
+        1248
+      ],
+      "id": "b48b5aaa-a0f8-418e-8533-4f36978aed5d",
+      "name": "Simple Memory",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0ACJ6KPNEM",
+          "mode": "list",
+          "cachedResultName": "finance"
+        },
+        "text": "={{ $json.output }}",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $node[\"Webhook\"].json.body.event.ts }}"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1920,
+        1024
+      ],
+      "id": "b88b82c3-a6b1-4503-a3a7-f78f6ca32e88",
+      "name": "Send a message",
+      "webhookId": "b2957f1a-edd1-4bc6-9f44-27e709ccc0e8",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackApi": {
+          "id": "IiBAuK1qkCFH6YkN",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack/events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -464,
+        848
+      ],
+      "id": "3ff8b7d7-1f96-49f6-8334-548756495767",
+      "name": "Webhook",
+      "webhookId": "9f42464f-0360-460d-a718-a70480fd3862",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Share information:\n{{ $node['get_image'].json.body.event.text }}\n\nBill Image:\n{{ $json.info }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "### CONTEXT\nYou are tasked with extracting information from invoices and then using share information to record the individual shares of each item for each individual.\n\n### INSTRUCTIONS\n- You are given the share information. This information contains how the items in the bill are to be shared.\n- You are given an image of the bill in binary format. This contains how many items were purchased, in what quantity and what was their price. The share information is to be used to split the prices and quantities for every individual.\n\n### IMPORTANT\nDO NOT calculate total share of the individals. Just report what was the quantity of each item, each person had and the 1 unit price of each item.\n\n## OUTPUT\nOutput a single string detailing what all each person purchased in what quantity and what was the price of single item(s)."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -464,
+        32
+      ],
+      "id": "0b74f088-77e7-455e-bebf-631ae0819a93",
+      "name": "Basic LLM Chain",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7c9509eb-48da-4e8f-859a-1ada180a7ffe",
+              "leftValue": "={{ $json.body.event.files }}",
+              "rightValue": "message",
+              "operator": {
+                "type": "array",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "952f0ab3-91f8-4d72-bafa-fecbfb855343",
+              "leftValue": "={{ $json.body.event.files.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -16,
+        976
+      ],
+      "id": "1f91cffb-5cc5-45a5-944e-0eef43f60497",
+      "name": "event_type_message_condition"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        256
+      ],
+      "id": "21f25d99-46d2-4768-8b36-02ebd9509be1",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "zfJJ6kGG14dQRhCZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0b8fa848-cd76-4aac-b5dd-870fb07db7d4",
+              "leftValue": "={{ $json.body.type }}",
+              "rightValue": "url_verification",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        848
+      ],
+      "id": "339342b7-b2be-44e6-8ec0-38fa2e8d2bf1",
+      "name": "check_event_type"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"challenge\": \"{{ $json.body.challenge }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -16,
+        784
+      ],
+      "id": "0db26b73-6532-4b93-abfa-7de1a7ac1201",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.event.files[0].url_private_download }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        208,
+        800
+      ],
+      "id": "d8feeb74-446b-4e11-b587-21f4ad144482",
+      "name": "get_image",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackApi": {
+          "id": "IiBAuK1qkCFH6YkN",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "text": "The image is going to be an invoice. Extract the items, the quantities of items and their amounts.\nIf it's an invoice image. STATE that it's not an invoice image.",
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        800
+      ],
+      "id": "a725b24c-344a-4219-88b8-368968e1afd6",
+      "name": "Analyze an image",
+      "alwaysOutputData": true,
+      "retryOnFail": false,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "zfJJ6kGG14dQRhCZ",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst billData = $input.first();\nconst parts = billData.json?.content?.parts;\nlet info = '';\n\nparts.forEach(part => {\n  info += part.text + '\\n'\n});\n\nreturn {\n  body: {\n    event: {\n      text: info\n    }\n  }\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        800
+      ],
+      "id": "63674c0b-f445-4089-9444-417affb72b8b",
+      "name": "bill_data",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        928
+      ],
+      "id": "384decf8-370d-405c-9f95-33666455203a",
+      "name": "Merge",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst message = $input.last();\nconst billData = $input.first();\nmessage.json.body.event.text += '\\n' + billData.json.body.event.text;\n\nreturn message;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        928
+      ],
+      "id": "fe43edc8-7f00-4d75-a435-d774196f8622",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "invoice submission": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "bill upload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "non billed expense",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bill upload": {
+      "main": [
+        []
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "non billed expense": {
+      "main": [
+        []
+      ]
+    },
+    "Verify Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sum Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "check_event_type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "event_type_message_condition": {
+      "main": [
+        [
+          {
+            "node": "get_image",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        []
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_event_type": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "event_type_message_condition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_image": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "bill_data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bill_data": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "b57ef6cd-ecf5-425a-aadb-912249e44edb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "818ad1065305749a35e0f31d6d2ad40245fb13f81c0751ca9818c78fb2d1743d"
+  },
+  "id": "aFKCnz3PE4rOmMX1KDmtm",
+  "tags": []
+}
