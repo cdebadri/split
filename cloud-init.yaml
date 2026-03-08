@@ -10,7 +10,7 @@ runcmd:
   - yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
   # --- 3) Install Docker CE, CLI, and containerd ---
-  - yum install -y docker-ce docker-ce-cli containerd.io
+  - yum install -y docker-ce docker-ce-cli containerd.io python3-pip
 
   # --- 4) Enable and start Docker service ---
   - systemctl enable docker
@@ -32,48 +32,90 @@ runcmd:
   - git clone https://github.com/cdebadri/split.git /opt/n8n
 
   # --- 9) Build .env for n8n config: ---
+  - pip3 install oci-cli
   - |
-    cat <<EOF > /opt/n8n/.env
-    GENERIC_TIMEZONE="Asia/Kolkata"
-    N8N_HOST="0.0.0.0"
-    WEBHOOK_URL=ENV_WEBHOOK_URL
-    N8N_PROTOCOL="http"
-    N8N_BASIC_AUTH_ACTIVE=true
-    N8N_BASIC_AUTH_USER=ENV_ADMIN
-    N8N_BASIC_AUTH_PASSWORD=ENV_PASSWORD
-    EOF
+    ENV_FILE="/etc/environment.secrets"
 
-  # --- 10) Write Docker Compose for n8n ---
+    declare -A SECRETS=(
+      ["ENV_SLACK_SIGNING_SECRET"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaasu5jollh2lmf6zof7r5je43iwzcbyx76hwochhvrxpkq"
+      ["ENV_SLACK_API_TOKEN"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaamu43cffnw6yfpf3ybpqu2faishwfm3g3q5pcr56zlwza"
+      ["ENV_WEBHOOK_URL"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaaeqsllh2xtyxgke3lcbmhrawrsgpsp7om5ille4wpfgma"
+      ["GEMINI_API_KEY"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaa5xwt34xshldz3vsv3ivu633abaxmpjzbegjocr43q2jq"
+      ["ENV_USERNAME"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaacdu5a2w7mwx4srkgwh2jyivmwh4wtv4v6f73i7jn5rta"
+      ["ENV_PASSWORD"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaatjfrks5cyin3uzwaijjbewkvobcq2qovh5rlv6ygcmyq"
+    )
+
+    for ENV_VAR in "${!SECRETS[@]}"; do
+      SECRET_VALUE=$(/usr/local/bin/oci secrets secret-bundle get \
+        --secret-id "${SECRETS[$ENV_VAR]}" \
+        --auth instance_principal \
+        --query 'data."secret-bundle-content".content' \
+        --raw-output | base64 -d)
+
+      echo "${ENV_VAR}=\"${SECRET_VALUE}\"" >> "$ENV_FILE"
+    done
+
+    chmod 600 "$ENV_FILE"
+
+  # Start N8N container
   - |
-    cat <<EOF > /opt/n8n/docker-compose.yml
-    version: "3.8"
-    services:
-      n8n:
-        image: n8nio/n8n:latest
-        restart: unless-stopped
-        ports:
-          - "5678:5678"
-        environment:
-          - GENERIC_TIMEZONE=\${GENERIC_TIMEZONE}
-          - N8N_HOST=\${N8N_HOST}
-          - WEBHOOK_URL=\${WEBHOOK_URL}
-          - N8N_PROTOCOL=\${N8N_PROTOCOL}
-          - N8N_BASIC_AUTH_ACTIVE=\${N8N_BASIC_AUTH_ACTIVE}
-          - N8N_BASIC_AUTH_USER=\${N8N_BASIC_AUTH_USER}
-          - N8N_BASIC_AUTH_PASSWORD=\${N8N_BASIC_AUTH_PASSWORD}
-        volumes:
-          - n8n_data:/home/node/.n8n
-          - ./workflows:/home/node/.n8n/workflows
-    volumes:
-      n8n_data:
-    EOF
+    ENV_ARGS=""
+    while IFS='=' read -r KEY VALUE; do
+      VALUE="${VALUE%\"}"
+      VALUE="${VALUE#\"}"
+      ENV_ARGS="$ENV_ARGS -e ${KEY}=${VALUE}"
+    done < /etc/environment.secrets
 
-  # --- 11) Launch the stack ---
-  - cd /opt/n8n
-  - docker compose up -d
+    docker run -d \
+      --name n8n \
+      --restart unless-stopped \
+      -p 5678:5678 \
+      -v /root/n8n-data:/home/node/.n8n \
+      -e N8N_BLOCK_ENV_ACCESS_IN_NODE=false \
+      -e N8N_BASIC_AUTH_ACTIVE=true \
+      -e N8N_BASIC_AUTH_USER=admin \
+      -e N8N_BASIC_AUTH_PASSWORD=changeme \
+      $ENV_ARGS \
+      docker.n8n.io/n8nio/n8n
 
-  # --- 12) Delay & import workflows automatically ---
-  - sleep 20
-  - docker exec $(docker ps -q -f "ancestor=n8nio/n8n:latest") n8n import:workflow --input=/home/node/.n8n/workflows
+  # Wait for N8N to be ready
+  - |
+    echo "Waiting for N8N to start..."
+    for i in $(seq 1 20); do
+      if curl -s -o /dev/null -w "%{http_code}" http://localhost:5678/healthz | grep -q "200"; then
+        echo "N8N is up"
+        break
+      fi
+      echo "Attempt $i: N8N not ready yet, waiting 5s..."
+      sleep 5
+    done
 
-final_message: "n8n ARM Always Free setup complete!"
+  # Pull workflow JSON from GitHub and import + activate it
+  - |
+    GITHUB_RAW_URL="https://raw.githubusercontent.com/cdebadri/split/refs/heads/main/Split.json"
+    N8N_URL="http://localhost:5678"
+    N8N_USER="admin"
+    N8N_PASS="changeme"
+
+    # Download workflow JSON
+    curl -fsSL "$GITHUB_RAW_URL" -o /tmp/workflow.json
+
+    # Import workflow via N8N API
+    WORKFLOW_RESPONSE=$(curl -s -X POST "$N8N_URL/api/v1/workflows" \
+      -u "$N8N_USER:$N8N_PASS" \
+      -H "Content-Type: application/json" \
+      -d @/tmp/workflow.json)
+
+    echo "Import response: $WORKFLOW_RESPONSE"
+
+    # Extract workflow ID from response
+    WORKFLOW_ID=$(echo "$WORKFLOW_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "Workflow ID: $WORKFLOW_ID"
+
+    # Activate the workflow
+    curl -s -X PATCH "$N8N_URL/api/v1/workflows/$WORKFLOW_ID" \
+      -u "$N8N_USER:$N8N_PASS" \
+      -H "Content-Type: application/json" \
+      -d '{"active": true}'
+
+    echo "Workflow activated"
