@@ -66,6 +66,10 @@ runcmd:
       ENV_ARGS="$ENV_ARGS -e ${KEY}=${VALUE}"
     done < /etc/environment.secrets
 
+    set -a
+    source /etc/environment.secrets
+    set +a
+
     docker run -d \
       --name n8n \
       --restart unless-stopped \
@@ -73,8 +77,8 @@ runcmd:
       -v /root/n8n-data:/home/node/.n8n \
       -e N8N_BLOCK_ENV_ACCESS_IN_NODE=false \
       -e N8N_BASIC_AUTH_ACTIVE=true \
-      -e N8N_BASIC_AUTH_USER=admin \
-      -e N8N_BASIC_AUTH_PASSWORD=changeme \
+      -e N8N_BASIC_AUTH_USER=$ENV_USERNAME \
+      -e N8N_BASIC_AUTH_PASSWORD=$ENV_PASSWORD \
       $ENV_ARGS \
       docker.n8n.io/n8nio/n8n
 
@@ -94,8 +98,8 @@ runcmd:
   - |
     GITHUB_RAW_URL="https://raw.githubusercontent.com/cdebadri/split/refs/heads/main/Split.json"
     N8N_URL="http://localhost:5678"
-    N8N_USER="admin"
-    N8N_PASS="changeme"
+    N8N_USER="$ENV_USERNAME"
+    N8N_PASS="$ENV_PASSWORD"
 
     # Download workflow JSON
     curl -fsSL "$GITHUB_RAW_URL" -o /tmp/workflow.json
