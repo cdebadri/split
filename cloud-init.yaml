@@ -21,7 +21,7 @@ runcmd:
 
   # --- 6) Install Docker Compose plugin ---
   - mkdir -p /usr/local/lib/docker/cli-plugins
-  - curl -SL https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-linux-aarch64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  - curl -SL https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
   - chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
   # --- 7) Create project directory ---
@@ -96,6 +96,7 @@ runcmd:
 
   # Pull workflow JSON from GitHub and import + activate it
   - |
+    source /etc/environment.secrets
     GITHUB_RAW_URL="https://raw.githubusercontent.com/cdebadri/split/refs/heads/main/Split.json"
     N8N_URL="http://localhost:5678"
     N8N_USER="$ENV_USERNAME"
