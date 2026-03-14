@@ -1,36 +1,25 @@
 #!/bin/bash
 set -e
 
-# --- 1) Open firewall ---
+# --- 1) Firewall ---
 firewall-cmd --permanent --add-service=ssh
 firewall-cmd --permanent --add-port=22/tcp
 firewall-cmd --permanent --add-port=5678/tcp
 firewall-cmd --reload
 
-# --- 2) Install prerequisites ---
-yum install -y yum-utils git dnf-plugins-core python3-pip
+# --- 2) Install Node.js via nvm ---
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+source "$NVM_DIR/nvm.sh"
+nvm install 20
+nvm use 20
 
-# --- 3) Add Docker repo and install ---
-yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-yum install -y docker-ce docker-ce-cli containerd.io
+# --- 3) Install N8N ---
+npm install -g n8n
 
-# --- 4) Enable and start Docker ---
-systemctl enable docker
-systemctl start docker
-usermod -aG docker opc
+# --- 4) Install OCI CLI and fetch secrets ---
+pip3 install oci-cli --no-cache-dir
 
-# --- 5) Docker Compose ---
-mkdir -p /usr/local/lib/docker/cli-plugins
-curl -SL https://github.com/docker/compose/releases/download/v2.22.0/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-# --- 6) Clone repo ---
-git clone https://github.com/cdebadri/split.git /opt/n8n
-
-# --- 7) Install OCI CLI ---
-/usr/bin/pip3 install oci-cli --no-cache-dir
-
-# --- 8) Fetch secrets ---
 ENV_FILE="/etc/environment.secrets"
 declare -A SECRETS=(
   ["ENV_SLACK_SIGNING_SECRET"]="ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaasu5jollh2lmf6zof7r5je43iwzcbyx76hwochhvrxpkq"
@@ -46,31 +35,41 @@ for ENV_VAR in "${!SECRETS[@]}"; do
     --auth instance_principal \
     --query 'data."secret-bundle-content".content' \
     --raw-output | base64 -d)
-  echo "${ENV_VAR}=\"${SECRET_VALUE}\"" >> "$ENV_FILE"
+  echo "${ENV_VAR}=${SECRET_VALUE}" >> "$ENV_FILE"
 done
 chmod 600 "$ENV_FILE"
 
-# --- 9) Start N8N ---
+# --- 5) Start N8N temporarily WITH UI for workflow import ---
 set -a
-source /etc/environment.secrets
+source "$ENV_FILE"
 set +a
 
-docker run -d \
-  --name n8n \
-  --restart unless-stopped \
-  -p 5678:5678 \
-  -v /root/n8n-data:/home/node/.n8n \
-  -e N8N_BLOCK_ENV_ACCESS_IN_NODE=false \
-  -e N8N_BASIC_AUTH_ACTIVE=true \
-  -e N8N_BASIC_AUTH_USER="$ENV_USERNAME" \
-  -e N8N_BASIC_AUTH_PASSWORD="$ENV_PASSWORD" \
-  -e ENV_SLACK_SIGNING_SECRET="$ENV_SLACK_SIGNING_SECRET" \
-  -e ENV_SLACK_API_TOKEN="$ENV_SLACK_API_TOKEN" \
-  -e ENV_WEBHOOK_URL="$ENV_WEBHOOK_URL" \
-  -e GEMINI_API_KEY="$GEMINI_API_KEY" \
-  docker.n8n.io/n8nio/n8n
+NODE_PATH=$(which n8n | xargs dirname)
 
-# --- 10) Wait for N8N ---
+cat > /etc/systemd/system/n8n.service <<EOF
+[Unit]
+Description=N8N Workflow Automation
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+EnvironmentFile=/etc/environment.secrets
+Environment=N8N_BASIC_AUTH_ACTIVE=true
+Environment=EXECUTIONS_MODE=regular
+Environment=N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+ExecStart=${NODE_PATH}/n8n start
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable n8n
+systemctl start n8n
+
+# --- 6) Wait for N8N to be ready ---
 echo "Waiting for N8N to start..."
 for i in $(seq 1 20); do
   if curl -s -o /dev/null -w "%{http_code}" http://localhost:5678/healthz | grep -q "200"; then
@@ -81,16 +80,53 @@ for i in $(seq 1 20); do
   sleep 5
 done
 
-# --- 11) Import and activate workflow ---
-source /etc/environment.secrets
+# --- 7) Import and activate workflow ---
+source "$ENV_FILE"
 curl -fsSL "https://raw.githubusercontent.com/cdebadri/split/refs/heads/main/Split.json" -o /tmp/workflow.json
+
 WORKFLOW_RESPONSE=$(curl -s -X POST "http://localhost:5678/api/v1/workflows" \
   -u "$ENV_USERNAME:$ENV_PASSWORD" \
   -H "Content-Type: application/json" \
   -d @/tmp/workflow.json)
+
+echo "Import response: $WORKFLOW_RESPONSE"
+
 WORKFLOW_ID=$(echo "$WORKFLOW_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+echo "Workflow ID: $WORKFLOW_ID"
+
 curl -s -X PATCH "http://localhost:5678/api/v1/workflows/$WORKFLOW_ID" \
   -u "$ENV_USERNAME:$ENV_PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{"active": true}'
+
 echo "Workflow activated"
+
+# --- 8) Restart N8N in headless mode (no UI) ---
+echo "Restarting N8N in headless mode..."
+
+cat > /etc/systemd/system/n8n.service <<EOF
+[Unit]
+Description=N8N Workflow Automation (headless)
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+EnvironmentFile=/etc/environment.secrets
+Environment=N8N_DISABLE_UI=true
+Environment=N8N_BASIC_AUTH_ACTIVE=true
+Environment=EXECUTIONS_MODE=regular
+Environment=N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+ExecStart=${NODE_PATH}/n8n start
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl restart n8n
+
+echo "N8N running in headless mode"
+echo "Done!"
