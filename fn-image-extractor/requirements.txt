@@ -1,0 +1,3 @@
+fdk>=0.1.72
+google-generativeai>=0.8.0
+requests>=2.32.0

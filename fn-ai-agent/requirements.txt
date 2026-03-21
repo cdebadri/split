@@ -1,0 +1,5 @@
+fdk>=0.1.72
+langchain>=0.3.0
+langchain-google-genai>=2.0.0
+langchain-core>=0.3.0
+oci>=2.126.0

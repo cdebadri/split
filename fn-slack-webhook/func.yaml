@@ -1,0 +1,14 @@
+schema_version: 20180708
+name: fn-slack-webhook
+version: 0.0.1
+runtime: python3.11
+build_image: fnproject/python:3.11-dev
+run_image: fnproject/python:3.11
+entrypoint: /python/bin/fdk /function/func.py handler
+memory: 256
+timeout: 30
+config:
+  IMAGE_WORKFLOW_OCID: <replace-with-image-flow-workflow-ocid>
+  OCI_COMPARTMENT_OCID: ocid1.tenancy.oc1..aaaaaaaaclytdno62zpicek3m2f2a5gn2u4rb6y2cawdfizph4amblai2uaa
+  SLACK_SIGNING_SECRET_OCID: ocid1.vaultsecret.oc1.ap-mumbai-1.amaaaaaapqmtbbaasu5jollh2lmf6zof7r5je43iwzcbyx76hwochhvrxpkq
+  TEXT_WORKFLOW_OCID: <replace-with-text-flow-workflow-ocid>

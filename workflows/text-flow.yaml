@@ -1,0 +1,35 @@
+# OCI Workflow: text-flow
+#
+# Triggered when a Slack event contains only text (no file attachments).
+# Steps:
+#   1. fn-ai-agent       - runs the share-calculation agent loop on the message text
+#   2. fn-slack-reply    - posts the result back to the Slack thread
+#
+# Replace all <...> placeholders with your actual OCI OCIDs before deploying.
+# Deploy via: oci workflow workflow create --from-file text-flow.yaml
+
+version: "1.0"
+name: text-flow
+description: "Process a text invoice message from Slack, calculate bill shares, post reply"
+
+states:
+  - type: TASK
+    name: calculate_shares
+    action:
+      type: INVOKE_FUNCTION
+      functionId: "<replace-with-fn-ai-agent-ocid>"
+    inputFrom: "$.input"
+    resultTo: "$.agentResult"
+    next: post_reply
+
+  - type: TASK
+    name: post_reply
+    action:
+      type: INVOKE_FUNCTION
+      functionId: "<replace-with-fn-slack-reply-ocid>"
+    inputFrom: "$.agentResult"
+    resultTo: "$.replyResult"
+    next: end_state
+
+  - type: SUCCEED
+    name: end_state
