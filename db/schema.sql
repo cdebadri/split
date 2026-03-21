@@ -1,18 +1,21 @@
--- OCI NoSQL Database: sessions table
+-- DynamoDB table: split-sessions
 --
--- Stores LangChain conversation history keyed by Slack invoice session.
--- session_key format: "Invoice-{event.ts}"
--- messages: JSON array of {role, content} objects (human/ai turns only)
+-- This is documentation only — DynamoDB tables are created by deploy.sh.
+-- The equivalent AWS CLI commands are:
 --
--- Run via OCI NoSQL CLI or OCI Console SQL worksheet.
--- The table qualifies for the OCI NoSQL Forever Free tier
--- (25 GB storage, 133M read/write ops/month).
-
-CREATE TABLE IF NOT EXISTS split_sessions (
-    session_key STRING,
-    messages    STRING,
-    PRIMARY KEY(session_key)
-)USING TTL 30 DAYS
-
--- TTL of 30 days automatically expires stale invoice sessions at no extra cost.
--- 'messages' is stored as a JSON string and parsed in the application layer.
+--   aws dynamodb create-table \
+--     --table-name split-sessions \
+--     --attribute-definitions AttributeName=session_key,AttributeType=S \
+--     --key-schema AttributeName=session_key,KeyType=HASH \
+--     --billing-mode PAY_PER_REQUEST
+--
+--   aws dynamodb update-time-to-live \
+--     --table-name split-sessions \
+--     --time-to-live-specification "Enabled=true,AttributeName=ttl"
+--
+-- Table schema:
+--   session_key  (String, PK) — "<channel_id>:<thread_ts>"
+--   messages     (String)     — JSON array of {role, content} objects
+--   ttl          (Number)     — Unix epoch; item auto-expires after 30 days
+--
+-- Free tier: DynamoDB on-demand billing has 200M requests/month free.

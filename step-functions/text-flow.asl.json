@@ -1,0 +1,48 @@
+{
+  "Comment": "Split bill text flow: AI agent → Slack reply",
+  "StartAt": "RunAgent",
+  "States": {
+    "RunAgent": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "FN_AI_AGENT_ARN",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "output.$": "$.Payload.output",
+        "thread_ts.$": "$.Payload.thread_ts"
+      },
+      "ResultPath": "$.agent",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "SendReply"
+    },
+    "SendReply": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "FN_SLACK_REPLY_ARN",
+        "Payload": {
+          "output.$": "$.agent.output",
+          "thread_ts.$": "$.agent.thread_ts"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    }
+  }
+}
