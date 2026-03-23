@@ -43,6 +43,13 @@ def handler(event, context):
 
     raw_bytes = raw_body.encode("utf-8")
 
+    # Ignore Slack retries — cold start can exceed Slack's 3s timeout on first
+    # invocation, causing Slack to resend the same event with this header set.
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    if headers.get("x-slack-retry-num"):
+        logger.info("Dropping Slack retry (x-slack-retry-num=%s)", headers["x-slack-retry-num"])
+        return _response(200, {"status": "ignored_retry"})
+
     # Parse body first so url_verification never touches SSM
     try:
         body = json.loads(raw_body) if raw_body else {}
@@ -56,7 +63,6 @@ def handler(event, context):
         return _response(200, {"challenge": body.get("challenge", "")})
 
     # Verify Slack signature for all other events
-    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
     timestamp = headers.get("x-slack-request-timestamp", "")
     slack_sig = headers.get("x-slack-signature", "")
 
@@ -67,6 +73,16 @@ def handler(event, context):
         return _response(403, {"error": "Unauthorized"})
 
     slack_event = body.get("event", {})
+
+    # Ignore bot messages (including our own replies) and message edits
+    subtype = slack_event.get("subtype", "")
+    if subtype in ("bot_message", "message_changed", "message_deleted"):
+        logger.info("Ignoring event subtype=%s", subtype)
+        return _response(200, {"status": "ignored"})
+    if slack_event.get("bot_id"):
+        logger.info("Ignoring bot event bot_id=%s", slack_event.get("bot_id"))
+        return _response(200, {"status": "ignored"})
+
     files_list = slack_event.get("files") or (
         [slack_event["file"]] if slack_event.get("file") else []
     )
